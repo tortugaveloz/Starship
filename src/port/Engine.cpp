@@ -38,6 +38,7 @@
 #include <BlobFactory.h>
 #include <VertexFactory.h>
 #include "audio/GameAudio.h"
+#include "audio/Audio3DIntegration.h"
 #include "port/patches/DisplayListPatch.h"
 #include "port/mods/PortEnhancements.h"
 
@@ -295,6 +296,7 @@ bool GameEngine::GenAssetFile(bool exitOnFail) {
 void GameEngine::Create() {
     const auto instance = Instance = new GameEngine();
     instance->AudioInit();
+    Audio3DIntegration_Init();  // Initialize 3D audio after standard audio
     DisplayListPatch::Run();
     GameUI::SetupGuiElements();
 #if defined(__SWITCH__) || defined(__WIIU__)
@@ -306,6 +308,7 @@ void GameEngine::Create() {
 
 void GameEngine::Destroy() {
     PortEnhancements_Exit();
+    Audio3DIntegration_Shutdown();  // Shutdown 3D audio before standard audio
     AudioExit();
     for (auto ptr : MemoryPool) {
         free(ptr);
@@ -317,6 +320,9 @@ void GameEngine::Destroy() {
 }
 
 void GameEngine::StartFrame() const {
+    // Update 3D audio listener position each frame
+    Audio3DIntegration_Update();
+
     using Ship::KbScancode;
     const int32_t dwScancode = this->context->GetWindow()->GetLastScancode();
     this->context->GetWindow()->SetLastScancode(-1);
