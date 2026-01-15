@@ -7,6 +7,7 @@
 #include <macros.h>
 
 #include "mixer.h"
+#include "port/audio/Audio3DIntegration.h"
 
 #ifndef __clang__
 #pragma GCC optimize("unroll-loops")
@@ -753,6 +754,29 @@ void aEnvMixerImpl(uint16_t in_addr, uint16_t n_samples, bool swap_reverb, bool 
             vol_wet += rate_wet;
         }
     }
+}
+
+// 3D audio mixer - sends samples to OpenAL source if available
+void aEnvMixer3DImpl(uint16_t in_addr, uint16_t n_samples, bool swap_reverb, bool neg_left, bool neg_right,
+                     uint32_t wet_dry_addr, uint32_t haas_temp_addr, uint32_t num_channels, uint32_t cutoff_freq_lfe,
+                     uint32_t sfxId, float posX, float posY, float posZ, float distance, float volume, float pitch) {
+    // Check if OpenAL should handle this sound
+    if (sfxId != 0 && Audio3D_ShouldUseOpenAL(posX, posY, posZ, distance)) {
+        // Get the audio samples
+        int16_t* samples = BUF_S16(in_addr);
+        int numSamples = ROUND_UP_16(n_samples);
+        
+        // Queue samples to the OpenAL source
+        if (Audio3D_QueueSfxSamples(sfxId, samples, numSamples, SAMPLE_RATE, volume, pitch)) {
+            // OpenAL is handling this sound
+            return;
+        }
+        // Fall through to software mixer if OpenAL failed
+    }
+    
+    // Fall back to regular mixer
+    aEnvMixerImpl(in_addr, n_samples, swap_reverb, neg_left, neg_right, wet_dry_addr, haas_temp_addr,
+                  num_channels, cutoff_freq_lfe);
 }
 
 #ifndef SSE2_AVAILABLE

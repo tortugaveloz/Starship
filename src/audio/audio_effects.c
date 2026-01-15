@@ -38,6 +38,12 @@ void Audio_SequenceChannelProcessSound(SequenceChannel* channel, s32 updateVolum
                     layer->notePan = (channel->pan + (layer->pan * (0x80 - channel->panChannelWeight))) >> 7;
                 }
             }
+            // Always propagate 3D position data from channel to layer
+            layer->notePos3D[0] = channel->pos3D[0];
+            layer->notePos3D[1] = channel->pos3D[1];
+            layer->notePos3D[2] = channel->pos3D[2];
+            layer->noteDistance3D = channel->distance3D;
+            layer->noteSfxId3D = channel->sfxId3D;
         }
     }
     channel->changes.asByte = 0;

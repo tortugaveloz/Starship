@@ -3,6 +3,7 @@
 #include "audio/mixer.h"
 #include "endianness.h"
 #include "port/Engine.h"
+#include "port/audio/Audio3DIntegration.h"
 
 #define DMEM_WET_SCRATCH 0x470
 #define DMEM_COMPRESSED_ADPCM_DATA 0xD50
@@ -1304,6 +1305,11 @@ Acmd* AudioSynth_ProcessEnvelope(Acmd* aList, NoteSubEu* noteSub, NoteSynthesisS
     s32 sourceReverbVol;
     s32 temp = 0;
 
+    // Check if OpenAL 3D should handle this sound
+    // If so, aEnvMixer3D will send samples directly to OpenAL and skip the software mixer
+    bool useOpenAL3D = Audio3D_ShouldUseOpenAL(noteSub->pos3D[0], noteSub->pos3D[1], noteSub->pos3D[2], noteSub->distance3D)
+                       && noteSub->sfxId3D != 0;
+
     curVolLeft = synthState->curVolLeft;
     curVolRight = synthState->curVolRight;
     curVolCenter = synthState->curVolCenter;
@@ -1387,9 +1393,22 @@ Acmd* AudioSynth_ProcessEnvelope(Acmd* aList, NoteSubEu* noteSub, NoteSynthesisS
         aEnvSetup1(aList++, (sourceReverbVol & 0x7F), rampReverb, rampLeft, rampRight, rampCenter, rampLfe, rampRLeft,
                    rampRRight);
         aEnvSetup2(aList++, curVolLeft, curVolRight, curVolCenter, curVolLfe, curVolRLeft, curVolRRight);
-        aEnvMixer(aList++, dmemSrc, aiBufLen, ((sourceReverbVol & 0x80) >> 7), noteSub->bitField0.stereoStrongRight,
-                  noteSub->bitField0.stereoStrongLeft, (DMEM_WET_LEFT_CH << 16) | DMEM_LEFT_CH, 0,
-                  GetNumAudioChannels(), cutoffFreqLfe);
+        
+        if (useOpenAL3D) {
+            // Use 3D audio mixer - sends samples to OpenAL source
+            f32 volume = (f32)noteSub->panVolLeft / 4095.0f; // Normalize to 0-1 range
+            if ((f32)noteSub->panVolRight / 4095.0f > volume) {
+                volume = (f32)noteSub->panVolRight / 4095.0f;
+            }
+            aEnvMixer3D(aList++, dmemSrc, aiBufLen, ((sourceReverbVol & 0x80) >> 7), noteSub->bitField0.stereoStrongRight,
+                        noteSub->bitField0.stereoStrongLeft, (DMEM_WET_LEFT_CH << 16) | DMEM_LEFT_CH, 0,
+                        GetNumAudioChannels(), cutoffFreqLfe, noteSub->sfxId3D, noteSub->pos3D[0], noteSub->pos3D[1],
+                        noteSub->pos3D[2], noteSub->distance3D, volume, 1.0f);
+        } else {
+            aEnvMixer(aList++, dmemSrc, aiBufLen, ((sourceReverbVol & 0x80) >> 7), noteSub->bitField0.stereoStrongRight,
+                      noteSub->bitField0.stereoStrongLeft, (DMEM_WET_LEFT_CH << 16) | DMEM_LEFT_CH, 0,
+                      GetNumAudioChannels(), cutoffFreqLfe);
+        }
     }
 
     return aList;

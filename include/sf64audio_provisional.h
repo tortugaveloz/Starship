@@ -422,7 +422,11 @@ typedef struct {
     /* 0x03 */ Stereo stereo;
     /* 0x04 */ f32 freqMod;
     /* 0x08 */ f32 velocity;
-} NoteAttributes; // size = 0xC
+    // 3D position data for spatial audio
+    /* 0x0C */ f32 pos3D[3];
+    /* 0x18 */ f32 distance3D;
+    /* 0x1C */ u32 sfxId3D;
+} NoteAttributes; // size = 0x20
 
 // Also known as a SubTrack, according to sm64 debug strings.
 typedef struct SequenceChannel {
@@ -481,7 +485,11 @@ typedef struct SequenceChannel {
     /* 0x7C */ NotePool notePool;
     /* 0xBC */ s8 seqScriptIO[8]; // bridge between .seq script and audio lib, "io ports"
     /* 0xC4 */ u16 unkC4;
-} SequenceChannel;                // size = 0xC8
+    // 3D position data for spatial audio (set by Audio_SetSfxProperties)
+    /* 0xC8 */ f32 pos3D[3];      // X, Y, Z world position
+    /* 0xD4 */ f32 distance3D;    // Distance from listener
+    /* 0xD8 */ u32 sfxId3D;       // SFX ID for this channel
+} SequenceChannel;                // size = 0xE0
 
 // Might also be known as a Track, according to sm64 debug strings (?).
 typedef struct SequenceLayer {
@@ -520,7 +528,11 @@ typedef struct SequenceLayer {
     /* 0x50 */ SeqScriptState state;
     /* 0x6C */ AudioListItem listItem;
     /* 0x7C */ char pad7C[4];
-} SequenceLayer; // size = 0x80
+    // 3D position data propagated from channel
+    /* 0x80 */ f32 notePos3D[3];
+    /* 0x8C */ f32 noteDistance3D;
+    /* 0x90 */ u32 noteSfxId3D;
+} SequenceLayer; // size = 0x98
 
 typedef struct UnkStruct_800097A8 {
     /* 0x00 */ s16* unk_0;
@@ -625,7 +637,11 @@ typedef struct {
     /* 0x10 */ u16 panVolRRight;
     /* 0x12 */ u16 resampleRate;
     /* 0x14 */ Sample** waveSampleAddr;
-} NoteSubEu; // size = 0x16
+    // 3D position data for spatial audio
+    /* 0x1C */ f32 pos3D[3];
+    /* 0x28 */ f32 distance3D;
+    /* 0x2C */ u32 sfxId3D;
+} NoteSubEu; // size = 0x30
 
 typedef struct Note {
     /* 0x00 */ AudioListItem listItem;

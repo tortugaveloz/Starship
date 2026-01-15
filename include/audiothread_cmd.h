@@ -27,6 +27,7 @@ typedef enum {
     /* 0x0C */ AUDIOCMD_OP_CHANNEL_SET_COMB_FILTER_SIZE,
     /* 0x0D */ AUDIOCMD_OP_CHANNEL_SET_COMB_FILTER_GAIN,
     /* 0x0E */ AUDIOCMD_OP_CHANNEL_SET_STEREO,
+    /* 0x0F */ AUDIOCMD_OP_CHANNEL_SET_POS3D,
     // SeqPlayer Commands
     /* 0x41 */ AUDIOCMD_OP_SEQPLAYER_FADE_VOLUME_SCALE = 0x41,
     /* 0x46 */ AUDIOCMD_OP_SEQPLAYER_SET_IO = 0x46,
@@ -226,6 +227,44 @@ typedef enum {
  */
 #define AUDIOCMD_CHANNEL_SET_STEREO(seqPlayerIndex, channelIndex, stereoData) \
     AudioThread_QueueCmdS8(AUDIO_MK_CMD(AUDIOCMD_OP_CHANNEL_SET_STEREO, seqPlayerIndex, channelIndex, 0), stereoData)
+
+/**
+ * Set 3D position data for spatial audio
+ * Component indices: 0=posX, 1=posY, 2=posZ, 3=distance
+ *
+ * @param seqPlayerIndex the index of the seqPlayer to modify
+ * @param channelIndex the index of the channel to modify
+ * @param component the component index (0-3)
+ * @param value (f32) the value to set
+ */
+#define AUDIOCMD_CHANNEL_SET_POS3D_COMPONENT(seqPlayerIndex, channelIndex, component, value) \
+    AudioThread_QueueCmdF32(AUDIO_MK_CMD(AUDIOCMD_OP_CHANNEL_SET_POS3D, seqPlayerIndex, channelIndex, component), value)
+
+/**
+ * Set sfxId for 3D audio (uses S32 to preserve full 32-bit value)
+ */
+#define AUDIOCMD_CHANNEL_SET_POS3D_SFXID(seqPlayerIndex, channelIndex, sfxId) \
+    AudioThread_QueueCmdS32(AUDIO_MK_CMD(AUDIOCMD_OP_CHANNEL_SET_POS3D, seqPlayerIndex, channelIndex, 4), sfxId)
+
+/**
+ * Set all 3D position data for spatial audio in one call
+ *
+ * @param seqPlayerIndex the index of the seqPlayer to modify
+ * @param channelIndex the index of the channel to modify
+ * @param posX (f32) X position
+ * @param posY (f32) Y position
+ * @param posZ (f32) Z position
+ * @param distance (f32) distance from listener
+ * @param sfxId (u32) SFX ID for this channel
+ */
+#define AUDIOCMD_CHANNEL_SET_POS3D(seqPlayerIndex, channelIndex, posX, posY, posZ, distance, sfxId) \
+    do { \
+        AUDIOCMD_CHANNEL_SET_POS3D_COMPONENT(seqPlayerIndex, channelIndex, 0, posX); \
+        AUDIOCMD_CHANNEL_SET_POS3D_COMPONENT(seqPlayerIndex, channelIndex, 1, posY); \
+        AUDIOCMD_CHANNEL_SET_POS3D_COMPONENT(seqPlayerIndex, channelIndex, 2, posZ); \
+        AUDIOCMD_CHANNEL_SET_POS3D_COMPONENT(seqPlayerIndex, channelIndex, 3, distance); \
+        AUDIOCMD_CHANNEL_SET_POS3D_SFXID(seqPlayerIndex, channelIndex, sfxId); \
+    } while (0)
 
 // ==== Audio Thread SeqPlayer Commands ====
 

@@ -1,6 +1,7 @@
 #include "sys.h"
 #include "sf64audio_provisional.h"
 #include "port/resource/loaders/AudioLoader.h"
+#include "port/audio/Audio3DIntegration.h"
 
 static const char devstr00[] = "Audio: setvol: volume minus %f\n";
 static const char devstr01[] = "Audio: setvol: volume overflow %f\n";
@@ -143,19 +144,56 @@ void Audio_InitNoteSub(Note* note, NoteAttributes* noteAttr) {
         if (stereo.s.is_voice) { // VOICE
             panVolumeCenter = 1.0f;
         } else if (stereo.s.is_sfx) { // SFX
-            float pan_angle = ((float) pan) / 128 * 2 * M_PI;
+            // Use 3D position data from NoteAttributes for proper surround positioning
+            // (sfxId3D != 0 indicates valid 3D data)
+            if (noteAttr->sfxId3D != 0) {
+                // Get 3D position and distance from note attributes
+                f32 posX = noteAttr->pos3D[0];
+                f32 posY = noteAttr->pos3D[1];
+                f32 posZ = noteAttr->pos3D[2];
+                f32 distance = noteAttr->distance3D;
+                
+                // Calculate 3D pan (-1 to 1) and front/back factor
+                f32 pan3D = Audio3D_GetPan3D(posX, posY, posZ);
+                f32 frontBack = Audio3D_GetFrontBack(posX, posY, posZ);
+                
+                // Calculate distance-based attenuation (0 to 1)
+                f32 attenuation = Audio3D_GetAttenuation(distance);
+                
+                // Convert pan3D (-1..1) to left/right blend (0..1 where 0=left, 1=right)
+                f32 leftRight = (pan3D + 1.0f) * 0.5f;
+                
+                // Convert frontBack (-1..1) to front/rear blend (0..1 where 0=rear, 1=front)
+                f32 frontRear = (frontBack + 1.0f) * 0.5f;
+                
+                // Calculate speaker volumes based on 3D position, scaled by distance attenuation
+                // Front speakers get more when sound is in front
+                panVolumeLeft = (1.0f - leftRight) * frontRear * attenuation;
+                panVolumeRight = leftRight * frontRear * attenuation;
+                
+                // Rear speakers get more when sound is behind
+                panVolumeRearLeft = (1.0f - leftRight) * (1.0f - frontRear) * attenuation;
+                panVolumeRearRight = leftRight * (1.0f - frontRear) * attenuation;
+                
+                // Center channel gets contribution when sound is centered and in front
+                f32 centerAmount = (1.0f - fabsf(pan3D)) * frontRear;
+                panVolumeCenter = centerAmount * 0.5f * attenuation;
+            } else {
+                // Fallback to original pan-based calculation
+                float pan_angle = ((float) pan) / 128 * 2 * M_PI;
 
-            // Speaker angles in radians
-            const float front_left = (CVarGetInteger("gPositionFrontLeft", 240) - 90) * (M_PI / 180.0f);
-            const float front_right = (CVarGetInteger("gPositionFrontRight", 300) - 90) * (M_PI / 180.0f);
-            const float rear_left = (CVarGetInteger("gPositionRearLeft", 160) - 90) * (M_PI / 180.0f);
-            const float rear_right = (CVarGetInteger("gPositionRearRight", 20) - 90) * (M_PI / 180.0f);
+                // Speaker angles in radians
+                const float front_left = (CVarGetInteger("gPositionFrontLeft", 240) - 90) * (M_PI / 180.0f);
+                const float front_right = (CVarGetInteger("gPositionFrontRight", 300) - 90) * (M_PI / 180.0f);
+                const float rear_left = (CVarGetInteger("gPositionRearLeft", 160) - 90) * (M_PI / 180.0f);
+                const float rear_right = (CVarGetInteger("gPositionRearRight", 20) - 90) * (M_PI / 180.0f);
 
-            // Calculate volumes using cosine panning law
-            panVolumeLeft = fmaxf(0, cosf(pan_angle - front_left));      // Front Left
-            panVolumeRight = fmaxf(0, cosf(pan_angle - front_right));    // Front Right
-            panVolumeRearLeft = fmaxf(0, cosf(pan_angle - rear_left));   // Rear Left
-            panVolumeRearRight = fmaxf(0, cosf(pan_angle - rear_right)); // Rear Right
+                // Calculate volumes using cosine panning law
+                panVolumeLeft = fmaxf(0, cosf(pan_angle - front_left));      // Front Left
+                panVolumeRight = fmaxf(0, cosf(pan_angle - front_right));    // Front Right
+                panVolumeRearLeft = fmaxf(0, cosf(pan_angle - rear_left));   // Rear Left
+                panVolumeRearRight = fmaxf(0, cosf(pan_angle - rear_right)); // Rear Right
+            }
         } else {                                                         // MUSIC
             panVolumeLeft = gStereoPanVolume[pan];
             panVolumeRight = gStereoPanVolume[ARRAY_COUNT(gStereoPanVolume) - 1 - pan];
@@ -180,6 +218,13 @@ void Audio_InitNoteSub(Note* note, NoteAttributes* noteAttr) {
     noteSub->panVolRRight = (s32) (velocity * panVolumeRearRight * 4095.999f) * master_vol;
     noteSub->panVolCenter = (s32) (velocity * panVolumeCenter * 4095.999f) * master_vol;
     noteSub->panVolLfe = (s32) (velocity * 4095.999f) * master_vol;
+
+    // Copy 3D position, distance, and sfxId to noteSub
+    noteSub->pos3D[0] = noteAttr->pos3D[0];
+    noteSub->pos3D[1] = noteAttr->pos3D[1];
+    noteSub->pos3D[2] = noteAttr->pos3D[2];
+    noteSub->distance3D = noteAttr->distance3D;
+    noteSub->sfxId3D = noteAttr->sfxId3D;
 
     noteSub->gain = noteAttr->gain;
     if (noteSub->reverb != reverb) {
@@ -387,6 +432,12 @@ void Audio_ProcessNotes(void) {
                 sp70.reverb = attr->reverb;
                 sp70.stereo = attr->stereo;
                 sp70.gain = attr->gain;
+                // Copy 3D position data from attributes
+                sp70.pos3D[0] = attr->pos3D[0];
+                sp70.pos3D[1] = attr->pos3D[1];
+                sp70.pos3D[2] = attr->pos3D[2];
+                sp70.distance3D = attr->distance3D;
+                sp70.sfxId3D = attr->sfxId3D;
                 bookOffset = noteSub->bitField1.bookOffset;
             } else {
                 sp70.freqMod = playbackState->parentLayer->noteFreqMod;
@@ -397,6 +448,12 @@ void Audio_ProcessNotes(void) {
                 sp70.stereo.s.is_sfx = playbackState->parentLayer->channel->is_sfx;
                 sp70.reverb = playbackState->parentLayer->channel->targetReverbVol;
                 sp70.gain = playbackState->parentLayer->channel->reverbIndex;
+                // Copy 3D position data from layer
+                sp70.pos3D[0] = playbackState->parentLayer->notePos3D[0];
+                sp70.pos3D[1] = playbackState->parentLayer->notePos3D[1];
+                sp70.pos3D[2] = playbackState->parentLayer->notePos3D[2];
+                sp70.distance3D = playbackState->parentLayer->noteDistance3D;
+                sp70.sfxId3D = playbackState->parentLayer->noteSfxId3D;
 
                 bookOffset = playbackState->parentLayer->channel->bookOffset % 8U;
                 if ((playbackState->parentLayer->channel->seqPlayer->muted) &&
@@ -444,6 +501,12 @@ void Audio_SeqLayerDecayRelease(SequenceLayer* layer, s32 arg1) {
             noteAttr->velocity = layer->noteVelocity;
             noteAttr->pan = layer->notePan;
             noteAttr->stereo = layer->stereo;
+            // Copy 3D position data from layer
+            noteAttr->pos3D[0] = layer->notePos3D[0];
+            noteAttr->pos3D[1] = layer->notePos3D[1];
+            noteAttr->pos3D[2] = layer->notePos3D[2];
+            noteAttr->distance3D = layer->noteDistance3D;
+            noteAttr->sfxId3D = layer->noteSfxId3D;
             if (layer->channel != NULL) {
                 noteAttr->reverb = layer->channel->targetReverbVol;
                 noteAttr->gain = layer->channel->reverbIndex;
@@ -857,6 +920,11 @@ void Audio_NoteInitAll(void) {
         note->playbackState.prevParentLayer = NO_LAYER;
         note->playbackState.waveId = 0;
         note->playbackState.attributes.velocity = 0.0f;
+        note->playbackState.attributes.pos3D[0] = 0.0f;
+        note->playbackState.attributes.pos3D[1] = 0.0f;
+        note->playbackState.attributes.pos3D[2] = 0.0f;
+        note->playbackState.attributes.distance3D = 0.0f;
+        note->playbackState.attributes.sfxId3D = 0;
         note->playbackState.adsrVolModUnused = 0;
         note->playbackState.adsr.state = 0;
         note->playbackState.adsr.action.asByte = 0;

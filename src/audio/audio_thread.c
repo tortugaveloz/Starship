@@ -451,6 +451,26 @@ void AudioThread_ProcessCmds(u32 msg) {
                         case AUDIOCMD_OP_CHANNEL_SET_MUTE:
                             channel->muted = cmd->asSbyte;
                             break;
+                        case AUDIOCMD_OP_CHANNEL_SET_POS3D:
+                            // arg2 contains the component index: 0=posX, 1=posY, 2=posZ, 3=distance, 4=sfxId
+                            switch (cmd->arg2) {
+                                case 0:
+                                    channel->pos3D[0] = cmd->asFloat;
+                                    break;
+                                case 1:
+                                    channel->pos3D[1] = cmd->asFloat;
+                                    break;
+                                case 2:
+                                    channel->pos3D[2] = cmd->asFloat;
+                                    break;
+                                case 3:
+                                    channel->distance3D = cmd->asFloat;
+                                    break;
+                                case 4:
+                                    channel->sfxId3D = cmd->asInt;  // Use asInt for full 32-bit precision
+                                    break;
+                            }
+                            break;
                     }
                 }
             }

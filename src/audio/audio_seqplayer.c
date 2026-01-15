@@ -91,6 +91,11 @@ void AudioSeq_InitSequenceChannel(SequenceChannel* channel) {
     }
     channel->is_sfx = 0;
     channel->is_voice = 0;
+    channel->pos3D[0] = 0.0f;
+    channel->pos3D[1] = 0.0f;
+    channel->pos3D[2] = 0.0f;
+    channel->distance3D = 0.0f;
+    channel->sfxId3D = 0;
     Audio_InitNoteLists(&channel->notePool);
 }
 
@@ -127,6 +132,11 @@ s32 AudioSeq_SeqChannelSetLayer(SequenceChannel* channel, s32 layerIndex) {
     layer->pan = 0x40;
     layer->transposition = 0;
     layer->delay = 0;
+    layer->notePos3D[0] = 0.0f;
+    layer->notePos3D[1] = 0.0f;
+    layer->notePos3D[2] = 0.0f;
+    layer->noteDistance3D = 0.0f;
+    layer->noteSfxId3D = 0;
     layer->gateDelay = 0;
     layer->delay2 = 0;
     layer->note = NULL;

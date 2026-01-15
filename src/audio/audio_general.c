@@ -4,6 +4,7 @@
 #include "audiothread_cmd.h"
 #include "audioseq_cmd.h"
 #include "port/Engine.h"
+#include "port/audio/Audio3DIntegration.h"
 
 void Audio_SetModulationAndPlaySfx(f32* sfxSource, u32 sfxId, f32 freqMod);
 s32 Audio_GetCurrentVoice(void);
@@ -537,8 +538,17 @@ void Audio_SetSfxProperties(u8 bankId, u8 entryIndex, u8 channelId) {
             freqMod = Audio_GetSfxFreqMod(bankId, entryIndex) * *entry->freqMod;
             if (!((bankId == SFX_BANK_PLAYER) && ((-200.0f < *entry->zPos) && (*entry->zPos < 200.0f)) &&
                   (sSfxChannelLayout != SFXCHAN_3))) {
-                pan = Audio_GetSfxPan(*entry->xPos, *entry->zPos, entry->token);
+                // Use true 3D pan calculation based on listener orientation
+                // Audio3D_GetPan3D returns -1.0 (left) to +1.0 (right)
+                // Convert to 0-127 range where 64 is center
+                f32 pan3D = Audio3D_GetPan3D(*entry->xPos, *entry->yPos, *entry->zPos);
+                pan = (s8)(64.0f + pan3D * 63.0f);
+                if (pan < 0) pan = 0;
+                if (pan > 127) pan = 127;
             }
+            
+            // Update 3D audio source position
+            Audio3D_Integration_UpdateSfxPosition(entry->sfxId, *entry->xPos, *entry->yPos, *entry->zPos);
             break;
         case SFX_BANK_SYSTEM:
             if (GameEngine_HasVersion(SF64_VER_EU)) {
@@ -569,6 +579,12 @@ void Audio_SetSfxProperties(u8 bankId, u8 entryIndex, u8 channelId) {
         AUDIOCMD_CHANNEL_SET_PAN(SEQ_PLAYER_SFX, channelId, pan);
         sSfxChannelState[channelId].pan = pan;
     }
+    
+    // Set 3D position data via audio command for spatial audio
+    printf("SetSfxProps: sfxId=0x%08X chan=%d pos=(%.0f,%.0f,%.0f) dist=%.0f\n",
+           entry->sfxId, channelId, *entry->xPos, *entry->yPos, *entry->zPos, entry->distance);
+    AUDIOCMD_CHANNEL_SET_POS3D(SEQ_PLAYER_SFX, channelId, *entry->xPos, *entry->yPos, *entry->zPos, 
+                               entry->distance, entry->sfxId);
 }
 
 f32 Audio_UpdateDopplerShift(f32* srcPos, f32* srcVel, f32 soundSpeed, f32* curDopplerShift) {
@@ -1422,6 +1438,9 @@ void Audio_RemoveSfxBankEntry(u8 bankId, u8 entryIndex) {
     SfxBankEntry* sfxBank = sSfxBanks[bankId];
     s32 pad;
 
+    // Notify 3D audio system that this SFX is stopping
+    Audio3D_Integration_OnSfxStop(sfxBank[entryIndex].sfxId);
+
     if (sfxBank[entryIndex].sfxId & SFX_FLAG_19) {
         Audio_ClearBGMMute(sfxBank[entryIndex].channelIndex);
     }
@@ -1581,11 +1600,17 @@ void Audio_ChooseActiveSfx(u8 bankId) {
 
 void Audio_PlayActiveSfx(u8 bankId) {
     u8 i;
+    static int callCount = 0;
+    if (callCount++ % 1000 == 0) {
+        printf("Audio_PlayActiveSfx: bankId=%d (call #%d)\n", bankId, callCount);
+    }
 
     for (i = 0; i < sChannelsPerBank[sSfxChannelLayout][bankId]; i++) {
         u8 entryIndex = sActiveSfx[bankId][i].entryIndex;
 
         if (entryIndex != 0xFF) {
+            printf("Audio_PlayActiveSfx: bank=%d entry=%d state=%d\n", 
+                   bankId, entryIndex, sSfxBanks[bankId][entryIndex].state);
             SfxBankEntry* entry = &sSfxBanks[bankId][entryIndex];
             SequenceChannel* channel = gSeqPlayers[SEQ_PLAYER_SFX].channels[sCurSfxPlayerChannelIndex];
             s32 pad;
@@ -1599,6 +1624,11 @@ void Audio_PlayActiveSfx(u8 bankId) {
                 Audio_SetSfxProperties(bankId, entryIndex, sCurSfxPlayerChannelIndex);
                 AUDIOCMD_CHANNEL_SET_IO(SEQ_PLAYER_SFX, sCurSfxPlayerChannelIndex, 0, 1);
                 AUDIOCMD_CHANNEL_SET_IO(SEQ_PLAYER_SFX, sCurSfxPlayerChannelIndex, 4, SFX_INDEX(entry->sfxId) & 0xFF);
+                
+                // Notify 3D audio system that a new SFX started playing
+                Audio3D_Integration_OnSfxPlay(entry->sfxId, *entry->xPos, *entry->yPos, *entry->zPos,
+                                              *entry->volMod, *entry->freqMod);
+                
                 entry->state = 4;
             } else if ((u8) channel->seqScriptIO[7] == 0x80) {
                 AUDIOCMD_CHANNEL_SET_IO(SEQ_PLAYER_SFX, sCurSfxPlayerChannelIndex, 7, 0);

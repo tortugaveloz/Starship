@@ -125,6 +125,93 @@ void Audio3DIntegration_OnSfxStop(uint32_t sfxId);
  */
 void Audio3DIntegration_StopAll(void);
 
+// ============================================================================
+// 3D Position-Based Audio Calculations
+// These functions calculate proper 3D spatialization values that can be used
+// by the game's audio mixer for accurate positional audio.
+// ============================================================================
+
+/**
+ * Get 3D pan value for a sound at the given world position.
+ * Uses true 3D math based on listener orientation.
+ * 
+ * @param srcX, srcY, srcZ - Sound source world position
+ * @return Pan value: -1.0 (full left) to +1.0 (full right), 0.0 = center
+ */
+float Audio3D_GetPan3D(float srcX, float srcY, float srcZ);
+
+/**
+ * Get distance from listener to source.
+ * 
+ * @param srcX, srcY, srcZ - Sound source world position
+ * @return Distance in game units
+ */
+float Audio3D_GetDistance(float srcX, float srcY, float srcZ);
+
+/**
+ * Get volume attenuation based on distance.
+ * Uses inverse distance attenuation model with configured reference/max distances.
+ * 
+ * @param distance - Distance from listener to source
+ * @return Attenuation: 0.0 (silent) to 1.0 (full volume)
+ */
+float Audio3D_GetAttenuation(float distance);
+
+/**
+ * Get front/back factor for a sound position.
+ * Useful for surround sound and reverb calculations.
+ * 
+ * @param srcX, srcY, srcZ - Sound source world position
+ * @return Factor: +1.0 (in front) to -1.0 (behind), 0.0 = to the side
+ */
+float Audio3D_GetFrontBack(float srcX, float srcY, float srcZ);
+
+// ============================================================================
+// C Wrappers for game code integration
+// ============================================================================
+
+void Audio3D_Integration_Init(void);
+void Audio3D_Integration_Shutdown(void);
+bool Audio3D_Integration_IsEnabled(void);
+void Audio3D_Integration_Update(void);
+void Audio3D_Integration_OnSfxPlay(uint32_t sfxId, float posX, float posY, float posZ, float volume, float pitch);
+void Audio3D_Integration_UpdateSfxPosition(uint32_t sfxId, float posX, float posY, float posZ);
+void Audio3D_Integration_OnSfxStop(uint32_t sfxId);
+
+/**
+ * Check if OpenAL should handle this 3D positioned audio.
+ * Returns true if OpenAL 3D is active and can handle the sound.
+ * 
+ * @param posX, posY, posZ - 3D position of the sound
+ * @param distance - Distance from listener
+ * @return true if OpenAL should handle this, false to use software mixer
+ */
+bool Audio3D_ShouldUseOpenAL(float posX, float posY, float posZ, float distance);
+
+/**
+ * Get the OpenAL source ID for an SFX ID.
+ * Returns 0 if not found or OpenAL 3D is not active.
+ * 
+ * @param sfxId - Sound effect ID
+ * @return OpenAL source ID, or 0 if not found
+ */
+uint32_t Audio3D_GetSourceForSfx(uint32_t sfxId);
+
+/**
+ * Queue audio samples to the OpenAL source for an SFX.
+ * Call this instead of aEnvMixer when OpenAL should handle the sound.
+ * 
+ * @param sfxId - Sound effect ID (used to find the OpenAL source)
+ * @param samples - Audio sample data (mono s16)
+ * @param numSamples - Number of samples
+ * @param sampleRate - Sample rate in Hz (typically 32000)
+ * @param volume - Volume multiplier (0.0-1.0)
+ * @param pitch - Pitch multiplier (1.0 = normal)
+ * @return true if samples were queued, false if source not found
+ */
+bool Audio3D_QueueSfxSamples(uint32_t sfxId, const int16_t* samples, uint32_t numSamples,
+                             uint32_t sampleRate, float volume, float pitch);
+
 #ifdef __cplusplus
 }
 #endif
